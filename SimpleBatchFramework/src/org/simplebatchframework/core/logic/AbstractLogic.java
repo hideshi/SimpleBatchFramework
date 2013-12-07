@@ -9,6 +9,7 @@ import org.simplebatchframework.core.annotation.Transactional;
 import org.simplebatchframework.core.bean.IBean;
 import org.simplebatchframework.core.bean.IResult;
 import org.simplebatchframework.core.exception.BatchDataBaseRuntimeException;
+import org.simplebatchframework.core.exception.BatchRuntimeException;
 
 public abstract class AbstractLogic extends AbstractComponent implements ILogic {
 	
@@ -18,12 +19,22 @@ public abstract class AbstractLogic extends AbstractComponent implements ILogic 
 	@Override
 	public IResult execute(IBean bean) {
 		adviceProcessor.processBefore(this.getClass(), null, null);
-		IResult result = executeLogic(bean);
+		IResult result = null;
+		try {
+			result = executeLogic(bean);
+		} catch (BatchRuntimeException e) {
+			try {
+				context.getConnection().rollback();
+				logger.info("rollbacked");
+			} catch (SQLException e2) {
+			}
+			throw e;
+		}
 		Transactional annotation = this.getClass().getAnnotation(Transactional.class);
 		try {
 			if(annotation != null && context.getConnection().getAutoCommit() == false) {
 				context.getConnection().commit();
-				logger.debug("commited");
+				logger.info("commited");
 			}
 		} catch (SQLException e) {
 			throw new BatchDataBaseRuntimeException(e);

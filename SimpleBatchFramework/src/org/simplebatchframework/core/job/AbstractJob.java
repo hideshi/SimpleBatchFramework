@@ -7,6 +7,7 @@ import org.simplebatchframework.core.advice.AdviceProcessor;
 import org.simplebatchframework.core.annotation.Inject;
 import org.simplebatchframework.core.annotation.Transactional;
 import org.simplebatchframework.core.exception.BatchDataBaseRuntimeException;
+import org.simplebatchframework.core.exception.BatchRuntimeException;
 
 public abstract class AbstractJob extends AbstractComponent implements IJob {
 
@@ -16,12 +17,21 @@ public abstract class AbstractJob extends AbstractComponent implements IJob {
 	@Override
 	public void execute() {
 		adviceProcessor.processBefore(this.getClass(), null, null);
-		executeJob();
+		try {
+			executeJob();
+		} catch (BatchRuntimeException e) {
+			try {
+				context.getConnection().rollback();
+				logger.info("rollbacked");
+			} catch (SQLException e2) {
+			}
+			throw e;
+		}
 		Transactional annotation = this.getClass().getAnnotation(Transactional.class);
 		try {
 			if(annotation != null && context.getConnection().getAutoCommit() == false) {
 				context.getConnection().commit();
-				logger.debug("commited");
+				logger.info("commited");
 			}
 		} catch (SQLException e) {
 			throw new BatchDataBaseRuntimeException(e);

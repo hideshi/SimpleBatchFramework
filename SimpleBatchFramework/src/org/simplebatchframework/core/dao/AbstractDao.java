@@ -11,6 +11,7 @@ import org.simplebatchframework.core.annotation.Transactional;
 import org.simplebatchframework.core.bean.IBean;
 import org.simplebatchframework.core.bean.IResult;
 import org.simplebatchframework.core.bean.Result;
+import org.simplebatchframework.core.exception.BatchRuntimeException;
 import org.simplebatchframework.core.exception.BatchDataBaseRuntimeException;
 
 public abstract class AbstractDao extends AbstractComponent implements IDao {
@@ -21,12 +22,28 @@ public abstract class AbstractDao extends AbstractComponent implements IDao {
 	@Override
 	public IResult execute(IBean bean) {
 		adviceProcessor.processBefore(this.getClass(), bean, null);
-		IResult result = executeDao(bean);
+		IResult result = null;
+		try {
+			result = executeDao(bean);
+		} catch (BatchRuntimeException e) {
+			try {
+				context.getConnection().rollback();
+				logger.info("rollbacked");
+			} catch (SQLException e2) {
+			}
+			throw e;
+		}
 		Transactional annotation = this.getClass().getAnnotation(Transactional.class);
 		try {
-			if(annotation != null && context.getConnection().getAutoCommit() == false) {
-				context.getConnection().commit();
-				logger.debug("commited");
+			try {
+				if (annotation != null && context.getConnection().getAutoCommit() == false) {
+					context.getConnection().commit();
+					logger.info("commited");
+				}
+			} catch (BatchRuntimeException e) {
+				context.getConnection().rollback();
+				logger.info("rollbacked");
+				throw e;
 			}
 		} catch (SQLException e) {
 			throw new BatchDataBaseRuntimeException(e);
@@ -37,15 +54,18 @@ public abstract class AbstractDao extends AbstractComponent implements IDao {
 
 	@SuppressWarnings("unchecked")
 	protected <T extends IBean> IResult executeDao(T bean) {
-			Result<T> result = new Result<T>();
-			if(this.getClass().getSimpleName().toLowerCase().contains("select")) {
-				ResultSet resultSet = context.getDialect().executeQuery(bean, this.getClass());
-				List<T> list = (List<T>) context.getDialect().resultSetToBean(resultSet, bean.getClass(), this.getClass());
-				result.setBeanList(list);
-			} else {
-				int updateCount = context.getDialect().executeUpdate(bean, this.getClass());
-				result.setUpdateCount(updateCount);
-			}
-			return result;
+		Result<T> result = new Result<T>();
+		if (this.getClass().getSimpleName().toLowerCase().contains("select")) {
+			ResultSet resultSet = context.getDialect().executeQuery(bean,
+					this.getClass());
+			List<T> list = (List<T>) context.getDialect().resultSetToBean(
+					resultSet, bean.getClass(), this.getClass());
+			result.setBeanList(list);
+		} else {
+			int updateCount = context.getDialect().executeUpdate(bean,
+					this.getClass());
+			result.setUpdateCount(updateCount);
+		}
+		return result;
 	}
 }

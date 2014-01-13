@@ -22,29 +22,23 @@ public abstract class AbstractDao extends AbstractComponent implements IDao {
 	@Override
 	public IResult execute(IBean bean) {
 		adviceProcessor.processBefore(this.getClass(), bean, null);
+		Transactional annotation = this.getClass().getAnnotation(Transactional.class);
 		IResult result = null;
 		try {
 			result = executeDao(bean);
+			if (annotation != null && context.getConnection().getAutoCommit() == false) {
+				context.getConnection().commit();
+				logger.info("commited");
+			}
 		} catch (BatchRuntimeException e) {
 			try {
-				context.getConnection().rollback();
-				logger.info("rollbacked");
+				if (annotation != null && context.getConnection().getAutoCommit() == false) {
+					context.getConnection().rollback();
+					logger.info("rollbacked");
+				}
 			} catch (SQLException e2) {
 			}
 			throw e;
-		}
-		Transactional annotation = this.getClass().getAnnotation(Transactional.class);
-		try {
-			try {
-				if (annotation != null && context.getConnection().getAutoCommit() == false) {
-					context.getConnection().commit();
-					logger.info("commited");
-				}
-			} catch (BatchRuntimeException e) {
-				context.getConnection().rollback();
-				logger.info("rollbacked");
-				throw e;
-			}
 		} catch (SQLException e) {
 			throw new BatchDataBaseRuntimeException(e);
 		}

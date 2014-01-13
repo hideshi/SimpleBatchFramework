@@ -19,23 +19,23 @@ public abstract class AbstractLogic extends AbstractComponent implements ILogic 
 	@Override
 	public IResult execute(IBean bean) {
 		adviceProcessor.processBefore(this.getClass(), null, null);
+		Transactional annotation = this.getClass().getAnnotation(Transactional.class);
 		IResult result = null;
 		try {
 			result = executeLogic(bean);
-		} catch (BatchRuntimeException e) {
-			try {
-				context.getConnection().rollback();
-				logger.info("rollbacked");
-			} catch (SQLException e2) {
-			}
-			throw e;
-		}
-		Transactional annotation = this.getClass().getAnnotation(Transactional.class);
-		try {
 			if(annotation != null && context.getConnection().getAutoCommit() == false) {
 				context.getConnection().commit();
 				logger.info("commited");
 			}
+		} catch (BatchRuntimeException e) {
+			try {
+				if(annotation != null && context.getConnection().getAutoCommit() == false) {
+					context.getConnection().rollback();
+					logger.info("rollbacked");
+				}
+			} catch (SQLException e2) {
+			}
+			throw e;
 		} catch (SQLException e) {
 			throw new BatchDataBaseRuntimeException(e);
 		}

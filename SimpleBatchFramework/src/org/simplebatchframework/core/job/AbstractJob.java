@@ -17,22 +17,22 @@ public abstract class AbstractJob extends AbstractComponent implements IJob {
 	@Override
 	public void execute() {
 		adviceProcessor.processBefore(this.getClass(), null, null);
-		try {
-			executeJob();
-		} catch (BatchRuntimeException e) {
-			try {
-				context.getConnection().rollback();
-				logger.info("rollbacked");
-			} catch (SQLException e2) {
-			}
-			throw e;
-		}
 		Transactional annotation = this.getClass().getAnnotation(Transactional.class);
 		try {
+			executeJob();
 			if(annotation != null && context.getConnection().getAutoCommit() == false) {
 				context.getConnection().commit();
 				logger.info("commited");
 			}
+		} catch (BatchRuntimeException e) {
+			try {
+				if(annotation != null && context.getConnection().getAutoCommit() == false) {
+					context.getConnection().rollback();
+					logger.info("rollbacked");
+				}
+			} catch (SQLException e2) {
+			}
+			throw e;
 		} catch (SQLException e) {
 			throw new BatchDataBaseRuntimeException(e);
 		}
